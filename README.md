@@ -18,7 +18,7 @@ happily_use_the_data(data);
 
 ## Notes
 
-Part of the purpose of this module was to explore how to do serialization/deserialization fast using the features that Jai offers that aren't in most languages. It makes extensive use of the type information that the language gives but also makes extensive use of compile-time code generation. For each different type that the code will serialize/deserialize it will generate bespoke code to handle each of the members. The generated code is nice and fast but it's good to take into account that if this is very overused it might make a dent in compile times, although I haven't experienced any myself at the time of writing.
+Part of the purpose of this module was to explore how to do serialization/deserialization fast using the features that Jai offers that aren't in most languages. It makes extensive use of the type information that the language gives but also makes good use of compile-time code generation. For each type that the code will serialize/deserialize it will generate bespoke code to handle its members. The generated code is nice and fast but it's good to take into account that if this is overused it might make a dent in compile times and potentially code size, although I haven't experienced either in any significant way myself at the time of writing.
 
 ## License
 
