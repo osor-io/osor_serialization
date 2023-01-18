@@ -4,7 +4,7 @@
 
 
 
-serialize :: (input : *$T) -> []u8 #must
+serialize :: (input : *$T, allocator : Allocator = context.allocator) -> []u8 #must
 {
     ALIGNED_INPUT_SIZE :: #run align_for_serialization(size_of(T));
 
@@ -12,7 +12,7 @@ serialize :: (input : *$T) -> []u8 #must
 
     buffer : []u8;
     buffer.count = ALIGNED_INPUT_SIZE + dynamic_memory_required;
-    buffer.data  = alloc(buffer.count);
+    buffer.data  = alloc(buffer.count, allocator);
     memset(buffer.data, 0, buffer.count);
 
     dynamic_memory : []u8;
