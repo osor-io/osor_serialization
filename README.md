@@ -2,6 +2,7 @@
 
 A wee serialization module for the Jai programming language. You can check the code in [module.jai](module.jai) then a few examples of how to use them in [example.jai](example.jai).
 
+## How To
 You can call `serialize` to transform a data structure into a byte buffer (including stuff like arrays, strings, pointers and potentially other dynamically allocated stuff). This only allocates a single time to get a buffer big enough to fit all the data on your type + any variable size data. It can also use a given allocator, defaulting to the current `context.allocator`.
 ```
 data : Data;
@@ -12,6 +13,7 @@ Then you can read back those bytes and transform them to a pointer of the origin
 ```
 bytes := read_bytes_from_somewhere();
 data := deserialize(bytes, Data);
+happily_use_the_data(data);
 ```
 
 ## Notes
