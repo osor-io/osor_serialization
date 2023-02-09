@@ -183,11 +183,14 @@ handle_dynamic_memory :: (element : *$T,
                 {
                     if !(member.flags & .CONSTANT)
                     {
+                        allow_pointer := false;
+                        for member.notes if it == "allow_single_element_pointer_serialization" then allow_pointer = true;
                         p(#string DONE
                         dynamic_memory_pointer = handle_dynamic_memory(cast(*type_of(T.%1))((cast(*u8)element) + %2), 
                                                                        dynamic_memory_pointer,
-                                                                       mode); 
-                        DONE, member.name, member.offset_in_bytes);
+                                                                       mode,
+                                                                       allow_pointer = %3); 
+                        DONE, member.name, member.offset_in_bytes, allow_pointer);
                     }
                 }
             }
@@ -203,6 +206,10 @@ handle_dynamic_memory :: (element : *$T,
 
 
             case .POINTER;
+            a(#string DONE
+            if <<element != null
+            {
+            DONE);
             #if allow_pointer
             {
                 a(#string DONE
@@ -230,13 +237,13 @@ handle_dynamic_memory :: (element : *$T,
             else
             {
                 a(#string DONE
-                if <<element != null
-                {
-                    log_error("We only allow null-pointers to be serialized, and % wasn't!", T);
-                    assert(false);
-                }
+                log_error("We only allow null-pointers to be serialized, and % wasn't!", T);
+                assert(false);
                 DONE);
             }
+            a(#string DONE
+            } // if (<<element) != null
+            DONE);
 
 
 
