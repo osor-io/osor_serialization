@@ -164,10 +164,10 @@ handle_dynamic_memory :: (element : *$T,
                 DONE, replacement_type);
                 #if mode == .COUNT
                 {
-                    p(#string DONE
+                    a(#string DONE
                     pointer_to_replaced_element := *replaced_element;
                     dynamic_memory_pointer = handle_dynamic_memory(*pointer_to_replaced_element, dynamic_memory_pointer, mode, allow_pointer = true);
-                    DONE, replacement_type);
+                    DONE);
                 }
                 else
                 {
@@ -414,7 +414,7 @@ do_serialization_replacement :: (struct_info : *Type_Info_Struct) -> bool, Type
         {
             assert((member.flags & .CONSTANT) != 0);
             assert(member.type == type_info(Type));
-            type : *Type = cast(*Type)(struct_info.constant_storage_buffer + member.offset_into_constant_storage);
+            type : *Type = cast(*Type)(*struct_info.constant_storage[member.offset_into_constant_storage]);
             return true, <<type;
         }
     }
