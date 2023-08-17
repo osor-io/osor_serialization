@@ -20,7 +20,7 @@ serialize :: (input : *$T, allocator : Allocator = context.allocator) -> []u8 #m
     dynamic_memory.data  = buffer.data + ALIGNED_INPUT_SIZE;
 
     output := cast(*T)buffer.data;
-    memcpy(output, input, size_of(type_of(<<input)));
+    memcpy(output, input, size_of(type_of(input.*)));
 
     dynamic_memory_pointer := handle_dynamic_memory(output, dynamic_memory.data, .COPY_AND_ENCODE);
     assert(dynamic_memory_pointer == dynamic_memory.data + dynamic_memory.count);
@@ -42,15 +42,6 @@ deserialize :: (bytes : []u8, $Output_Type : Type) -> *Output_Type
 
 cleanup_for_serialization :: (element : *$T)
 {
-    #if #run same_polymorph_source(T, Table(int, int))
-    {
-        table := element;
-        DEFAULT_VALUE :: table.Entry.{};
-        for * table.entries
-            if it.hash < FIRST_VALID_HASH 
-                memcpy(it, *DEFAULT_VALUE, size_of(type_of(DEFAULT_VALUE)));
-    }
-
     same_polymorph_source :: ($a : Type, $b : Type) -> bool
     {
         info_a := type_info(a);
@@ -58,6 +49,14 @@ cleanup_for_serialization :: (element : *$T)
         if info_a.polymorph_source_struct then info_a = info_a.polymorph_source_struct;
         if info_b.polymorph_source_struct then info_b = info_b.polymorph_source_struct;
         return info_a == info_b;
+    }
+    #if #run same_polymorph_source(T, Table(int, int))
+    {
+        table := element;
+        DEFAULT_VALUE :: table.Entry.{};
+        for * table.entries
+            if it.hash < FIRST_VALID_HASH 
+                memcpy(it, *DEFAULT_VALUE, size_of(type_of(DEFAULT_VALUE)));
     }
 }
 
@@ -111,7 +110,7 @@ handle_dynamic_memory :: (element : *$T,
 
                 case .VIEW;
                 a(#string DONE
-                array_data_size := element.count * size_of(type_of(<<element.data)); 
+                array_data_size := element.count * size_of(type_of(element.data.*)); 
                 DONE);
                 #if mode == .COPY_AND_ENCODE
                 {
@@ -172,7 +171,7 @@ handle_dynamic_memory :: (element : *$T,
                 else
                 {
                     p(#string DONE
-                    <<(cast(**%1)element) = *replaced_element;
+                    (cast(**%1)element).* = *replaced_element;
                     dynamic_memory_pointer = handle_dynamic_memory(cast(**%1)element, dynamic_memory_pointer, mode, allow_pointer = true);
                     DONE, replacement_type);
                 }
@@ -207,26 +206,26 @@ handle_dynamic_memory :: (element : *$T,
 
             case .POINTER;
             a(#string DONE
-            if <<element != null
+            if element.* != null
             {
             DONE);
             #if allow_pointer
             {
                 a(#string DONE
-                element_size := size_of(type_of(<<(<<element)));
+                element_size := size_of(type_of((element.*).*));
                 DONE);
                 #if mode == .COPY_AND_ENCODE
                 {
                     a(#string DONE
-                    memcpy(dynamic_memory_pointer, <<element, element_size);                      // copy original data
-                    <<(cast(*u64)element) = (cast(u64)dynamic_memory_pointer - cast(u64)element); // make pointer, point to the dynamic buffer (encoded)
-                    element_data := cast(type_of(<<element)) dynamic_memory_pointer;
+                    memcpy(dynamic_memory_pointer, element.*, element_size);                      // copy original data
+                    (cast(*u64)element).* = (cast(u64)dynamic_memory_pointer - cast(u64)element); // make pointer, point to the dynamic buffer (encoded)
+                    element_data := cast(type_of(element.*)) dynamic_memory_pointer;
                     DONE);
                 }
                 else
                 {
                     a(#string DONE
-                    element_data := <<element;
+                    element_data := element.*;
                     DONE);
                 }
                 a(#string DONE
@@ -242,7 +241,7 @@ handle_dynamic_memory :: (element : *$T,
                 DONE);
             }
             a(#string DONE
-            } // if (<<element) != null
+            } // if element.* != null
             DONE);
 
 
@@ -339,7 +338,7 @@ decode_dynamic_memory :: (element : *$T)
                 #assert(size_of(T) == size_of(*%1));
                 pointer_to_replaced_element : **%1 = cast(**%1)element;
                 inline decode_dynamic_memory(pointer_to_replaced_element); 
-                <<element = deserialization_replacement(<<pointer_to_replaced_element); 
+                element.* = deserialization_replacement(pointer_to_replaced_element.*); 
                 DONE, replacement_type);
             }
             for member : struct_info.members
@@ -361,7 +360,7 @@ decode_dynamic_memory :: (element : *$T)
                 // instead, but just in case someone does an allocator procedure by itself
                 // maybe this is better and simpler.
                 p(#string DONE
-                <<element = Serialized_Data_Allocator.proc;
+                element.* = Serialized_Data_Allocator.proc;
                 DONE);
             }
 
@@ -369,11 +368,11 @@ decode_dynamic_memory :: (element : *$T)
 
             case .POINTER;
             a(#string DONE
-            offset := <<(cast(*u64)element);
+            offset := (cast(*u64)element).*;
             if offset > 0
             {
-                <<element = cast(T)(cast(u64)element + <<(cast(*u64)element));
-                inline decode_dynamic_memory(<<element); 
+                element.* = cast(T)(cast(u64)element + (cast(*u64)element).*);
+                inline decode_dynamic_memory(element.*); 
             }
             DONE);
 
@@ -415,7 +414,7 @@ do_serialization_replacement :: (struct_info : *Type_Info_Struct) -> bool, Type
             assert((member.flags & .CONSTANT) != 0);
             assert(member.type == type_info(Type));
             type : *Type = cast(*Type)(*struct_info.constant_storage[member.offset_into_constant_storage]);
-            return true, <<type;
+            return true, type.*;
         }
     }
     return false, void;
@@ -452,7 +451,6 @@ get_type_name :: (info : *Type_Info) -> string
 {
     builder : String_Builder;
     free_buffers(*builder);
-    get_type_name_internal(*builder, info);
     get_type_name_internal :: (builder : *String_Builder, info : *Type_Info)
     {
         if info.type == .PROCEDURE
@@ -481,6 +479,7 @@ get_type_name :: (info : *Type_Info) -> string
             print_type_to_builder(builder, info);
         }
     }
+    get_type_name_internal(*builder, info);
     return builder_to_string(*builder, allocator = temporary_allocator);
 }
 

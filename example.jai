@@ -55,7 +55,7 @@ simple_example :: ()
     // Then you read back that file, load the contents and recover the original struct!
     //
     deserialized_test := deserialize(serialized_test, Test);
-    print("Deserialized: %\n", <<deserialized_test);
+    print("Deserialized: %\n", deserialized_test.*);
     assert(deserialized_test.a == 123);
 }
 
@@ -127,7 +127,7 @@ more_types_and_to_a_file :: ()
     {
         serialized_data := cast([]u8)read_entire_file("./serialized_data.bin");
         test := deserialize(serialized_data, Test);
-        print("%\n", <<test);
+        print("%\n", test.*);
         for test.table print("%, %\n", it_index, it);
     }
 }
@@ -163,7 +163,7 @@ how_about_compile_time :: ()
     serialized_data_at_compile_time := SERIALIZED_DATA_AT_COMPILE_TIME;
 
     test := deserialize(serialized_data_at_compile_time, Test);
-    print("%\n", <<test);
+    print("%\n", test.*);
     for test.c print("%, %\n", it_index, it);
 }
 
@@ -199,7 +199,7 @@ serialization_replacement :: (original : *Original_Type) -> Replacement_Type
     // the code goes throught the members twice. Once to see how much dynamic memory will
     // be required in total, then another time to do the copy after it has done the allocation.
     //
-    print("Transforming the original data to the replacement type");
+    print("Transforming the original data to the replacement type\n");
     replacement : Replacement_Type;
     replacement.data_compressed = cast(u8)floor(original.data * 255.0 + 0.5);
     replacement.time_of_compression = current_time_consensus();
@@ -240,7 +240,7 @@ replacing_type :: ()
         serialize(*test);
     };
     test := deserialize(data, Test);
-    print("%\n", <<test);
+    print("%\n", test.*);
 }
 
 
