@@ -2,7 +2,7 @@
 #import "Math";
 #import "File";
 #import "Hash_Table";
-using Serializer :: #import,dir "../osor_serialization";
+#import,dir "../osor_serialization";
 
 
 
@@ -67,22 +67,22 @@ more_types_and_to_a_file :: ()
 
     Test :: struct
     {
+        Internal_Variant_Type :: struct { a := 123; }
+        A_Variant :: #type,distinct Internal_Variant_Type;
+        Internal :: struct
+        {
+            a : []u16;
+            b : [3]string = .["hey", "these", "count"];
+            c : [..]float64;
+        }
+
         a := 123123;
         b : []u8;
         c := "testoooooaaaaaaaaaaooooT";
-        variant : A_Variant = xx 11223344;
-        internal : []Internal_Test;
+        variant := A_Variant.{};
+        internal : []Internal;
         d : [2]float32 = .[-1.0, 1.0];
         table : Table(u32, string);
-    }
-
-    A_Variant :: #type,distinct u64;
-
-    Internal_Test :: struct
-    {
-        a : []u16;
-        b : [3]string = .["hey", "these", "count"];
-        c : [..]float64;
     }
 
     //
@@ -93,7 +93,7 @@ more_types_and_to_a_file :: ()
     // Then we write that to a file 
     //
     {
-        internal : [2]Internal_Test;
+        internal : [2]Test.Internal;
         defer array_reset(*internal[0].c);
         defer array_reset(*internal[1].c);
         internal[0].a = .[1, 2, 3, 123, 0xFF_FF];
@@ -169,78 +169,68 @@ how_about_compile_time :: ()
 
 
 
-//
-// If you have a type that you want to be serialized as a different set of data
-// you can do it with a SERIALIZATION_REPLACEMENT. This basically will store the
-// replacement type instead.
-//
-// To do the replacement it'll call the provided procedures serialization_replacement
-// and deserialization_replacement, which need to transform back and forth from the two types.
-//
-// One example that I've used this for is for hashed-strings/string-ids on dev builds.
-// Where instead of serializing only the hash, you serialize both the hash and the string
-// that hashes to it. So when you deserialize the data later, you can see the original string
-// on debug builds and keep track of it.
-//
-Original_Type :: struct
-{
-    data : float64;
-    SERIALIZATION_REPLACEMENT :: Replacement_Type;
-}
-Replacement_Type :: struct
-{
-    data_compressed : u8;
-    time_of_compression : Apollo_Time;
-}
-serialization_replacement :: (original : *Original_Type) -> Replacement_Type
-{
-    //
-    // Note how this procedure gets called twice during serialization. This is because
-    // the code goes throught the members twice. Once to see how much dynamic memory will
-    // be required in total, then another time to do the copy after it has done the allocation.
-    //
-    print("Transforming the original data to the replacement type\n");
-    replacement : Replacement_Type;
-    replacement.data_compressed = cast(u8)floor(original.data * 255.0 + 0.5);
-    replacement.time_of_compression = current_time_consensus();
-    return replacement;
-}
-deserialization_replacement :: (replacement : *Replacement_Type) -> Original_Type
-{
-    //
-    // And this will get called once during deserialization, so you could run any code in here, such
-    // as putting stuff in your own global data structures, or god knows.
-    //
-    original : Original_Type;
-    print("Deserializing data that was compressed on %\n", to_calendar(replacement.time_of_compression));
-    original.data = replacement.data_compressed / 255.00;
-    return original;
-}
-
-//
-// You need to #poke_name the types and the replacement procedures into the module
-// because otherwise it'll try to insert code that uses them, but since these are not
-// in the scope of the module it doesn't know what the hell they are.
-//
-#poke_name Serializer Replacement_Type;
-#poke_name Serializer serialization_replacement;
-#poke_name Serializer deserialization_replacement;
-
 replacing_type :: ()
 {
     print_example_name("Serializing a type with a replacement");
+
     Test :: struct
     {
         og : Original_Type;
+        Original_Type :: struct
+        {
+            data : float64;
+
+            //
+            // If you have a type that you want to be serialized as a different set of data
+            // you can do it by providing a Replacement_Type type to convert to. As well as the
+            // functions to transform to and from this type, which need to be called
+            // serialization_replacement and deserialization_replacement.
+            //
+            // One example that I've used this for is for hashed-strings/string-ids on dev builds.
+            // Where instead of serializing only the hash, you serialize both the hash and the string
+            // that hashes to it. So when you deserialize the data later, you can see the original string
+            // on debug builds and keep track of it.
+            //
+            // See: needs_serialization_replacement()
+            //
+            Replacement_Type :: struct
+            {
+                data_compressed : u8;
+                time_of_compression : Apollo_Time;
+            }
+            serialization_replacement :: (original : *Original_Type) -> Replacement_Type
+            {
+                //
+                // Note how this procedure gets called twice during serialization. This is because
+                // the code goes throught the members twice. Once to see how much dynamic memory will
+                // be required in total, then another time to do the copy after it has done the allocation.
+                //
+                print("Transforming the original data to the replacement type\n");
+                replacement : Replacement_Type;
+                replacement.data_compressed = cast(u8)floor(original.data * 255.0 + 0.5);
+                replacement.time_of_compression = current_time_consensus();
+                return replacement;
+            }
+            deserialization_replacement :: (replacement : *Replacement_Type) -> Original_Type
+            {
+                //
+                // And this will get called once during deserialization, so you could run any code in here, such
+                // as putting stuff in your own global data structures, or god knows.
+                //
+                print("Deserializing data that was compressed on %\n", to_calendar(replacement.time_of_compression));
+                original : Original_Type;
+                original.data = replacement.data_compressed / 255.00;
+                return original;
+            }
+        }
     }
-    data := ifx true 
-    {
-        test : Test;
-        test.og.data = 0.123;
-        serialize(*test);
-    };
-    test := deserialize(data, Test);
-    print("%\n", test.*);
+
+    original_test : Test;
+    original_test.og.data = 0.123;
+    data := serialize(*original_test);
+
+    deserialized_test := deserialize(data, Test);
+    print("%\n", deserialized_test.*);
 }
 
 

@@ -1,6 +1,9 @@
 #import "Basic";
-#import "Hash_Table";
 #import "Compiler";
+
+
+
+#module_parameters(CLEAN_TABLES_UP := true);
 
 
 
@@ -40,29 +43,21 @@ deserialize :: (bytes : []u8, $Output_Type : Type) -> *Output_Type
 
 
 
-cleanup_for_serialization :: (element : *$T)
+#scope_file
+
+
+
+#if CLEAN_TABLES_UP
 {
-    same_polymorph_source :: ($a : Type, $b : Type) -> bool
+    #import "Hash_Table";
+    cleanup_for_serialization :: (table : *Table)
     {
-        info_a := type_info(a);
-        info_b := type_info(b);
-        if info_a.polymorph_source_struct then info_a = info_a.polymorph_source_struct;
-        if info_b.polymorph_source_struct then info_b = info_b.polymorph_source_struct;
-        return info_a == info_b;
-    }
-    #if #run same_polymorph_source(T, Table(int, int))
-    {
-        table := element;
         DEFAULT_VALUE :: table.Entry.{};
         for * table.entries
             if it.hash < FIRST_VALID_HASH 
                 memcpy(it, *DEFAULT_VALUE, size_of(type_of(DEFAULT_VALUE)));
     }
 }
-
-
-
-#scope_file
 
 
 
@@ -76,6 +71,17 @@ handle_dynamic_memory :: (element : *$T,
         quick_string_builder();
         p("// Handling dynamic memory for serializing %\n", T);
         info := cast(*Type_Info)type_info(T);
+
+        #if mode == .COUNT
+        {
+            #if CLEAN_TABLES_UP if same_polymorph_source(info, type_info(Table(int,int)))
+            {
+                a(#string DONE
+                cleanup_for_serialization(element);
+                DONE);
+            }
+        }
+
         if #complete info.type ==
         {
             case .STRING;
@@ -148,19 +154,14 @@ handle_dynamic_memory :: (element : *$T,
             
             case .STRUCT;
             struct_info := cast(*Type_Info_Struct)info;
-            #if mode == .COUNT
-            {
-                a(#string DONE
-                cleanup_for_serialization(element);
-                DONE);
-            }
-            replace, replacement_type := do_serialization_replacement(struct_info);
+            
+            replace := needs_serialization_replacement(struct_info);
             if replace
             {
-                p(#string DONE
-                replaced_element := serialization_replacement(element);
-                #assert(size_of(T) == size_of(*%1));
-                DONE, replacement_type);
+                a(#string DONE
+                replaced_element := element.serialization_replacement(element);
+                #assert(size_of(T) == size_of(*element.Replacement_Type));
+                DONE);
                 #if mode == .COUNT
                 {
                     a(#string DONE
@@ -170,10 +171,10 @@ handle_dynamic_memory :: (element : *$T,
                 }
                 else
                 {
-                    p(#string DONE
-                    (cast(**%1)element).* = *replaced_element;
-                    dynamic_memory_pointer = handle_dynamic_memory(cast(**%1)element, dynamic_memory_pointer, mode, allow_pointer = true);
-                    DONE, replacement_type);
+                    a(#string DONE
+                    (cast(**element.Replacement_Type)element).* = *replaced_element;
+                    dynamic_memory_pointer = handle_dynamic_memory(cast(**element.Replacement_Type)element, dynamic_memory_pointer, mode, allow_pointer = true);
+                    DONE);
                 }
             }
             else
@@ -199,7 +200,7 @@ handle_dynamic_memory :: (element : *$T,
             case .PROCEDURE;
             if info != type_info(Allocator_Proc)
             {
-                compiler_report(tprint("Only Allocator procedures can be in serialized structs, and this is a %", get_type_name(info)));
+                compiler_report(tprint("Only Allocator procedures can be in serialized structs, and % isn't one", get_type(info)));
             }
 
 
@@ -247,10 +248,10 @@ handle_dynamic_memory :: (element : *$T,
 
 
             case .VARIANT; 
-            variant_info := cast(*Type_Info_Variant)info;
-            p(#string DONE
-            dynamic_memory_pointer = handle_dynamic_memory(cast(*%1)element, dynamic_memory_pointer, mode, allow_pointer);
-            DONE, get_type_name(variant_info.variant_of));
+            a(#string DONE
+            INTERNAL_TYPE :: #run find_variant_contained_type(type_of(element.*));
+            dynamic_memory_pointer = handle_dynamic_memory(cast(*INTERNAL_TYPE)element, dynamic_memory_pointer, mode, allow_pointer);
+            DONE);
 
 
 
@@ -331,15 +332,15 @@ decode_dynamic_memory :: (element : *$T)
             
             case .STRUCT;
             struct_info := cast(*Type_Info_Struct)info;
-            replace, replacement_type := do_serialization_replacement(struct_info);
+            replace := needs_serialization_replacement(struct_info);
             if replace
             {
-                p(#string DONE
-                #assert(size_of(T) == size_of(*%1));
-                pointer_to_replaced_element : **%1 = cast(**%1)element;
+                a(#string DONE
+                #assert(size_of(T) == size_of(*element.Replacement_Type));
+                pointer_to_replaced_element : **element.Replacement_Type = cast(**element.Replacement_Type)element;
                 inline decode_dynamic_memory(pointer_to_replaced_element); 
-                element.* = deserialization_replacement(pointer_to_replaced_element.*); 
-                DONE, replacement_type);
+                element.* = element.deserialization_replacement(pointer_to_replaced_element.*); 
+                DONE);
             }
             for member : struct_info.members
             {
@@ -379,10 +380,10 @@ decode_dynamic_memory :: (element : *$T)
 
 
             case .VARIANT;
-            variant_info := cast(*Type_Info_Variant)info;
-            p(#string DONE
-            decode_dynamic_memory(cast(*%1)element);
-            DONE, get_type_name(variant_info.variant_of));
+            a(#string DONE
+            INTERNAL_TYPE :: #run find_variant_contained_type(type_of(element.*));
+            decode_dynamic_memory(cast(*INTERNAL_TYPE)element);
+            DONE);
 
 
 
@@ -405,19 +406,30 @@ Serialized_Data_Allocator :: Allocator.{
 
 
 
-do_serialization_replacement :: (struct_info : *Type_Info_Struct) -> bool, Type
+needs_serialization_replacement :: (struct_info : *Type_Info_Struct) -> bool
 {
+    found_type := false; 
+    found_serialization_replacement := false;
+    found_deserialization_replacement := false;
     for member : struct_info.members
     {
-        if member.name == "SERIALIZATION_REPLACEMENT"
+        if member.flags & .CONSTANT
         {
-            assert((member.flags & .CONSTANT) != 0);
-            assert(member.type == type_info(Type));
-            type : *Type = cast(*Type)(*struct_info.constant_storage[member.offset_into_constant_storage]);
-            return true, type.*;
+            if member.name == "Replacement_Type" && member.type.type == .TYPE
+            {
+                found_type = true;
+            }
+            if member.name == "serialization_replacement" && member.type.type == .PROCEDURE
+            {
+                found_serialization_replacement = true;
+            }
+            if member.name == "deserialization_replacement" && member.type.type == .PROCEDURE
+            {
+                found_deserialization_replacement = true;
+            }
         }
     }
-    return false, void;
+    return found_type && found_serialization_replacement && found_deserialization_replacement;
 }
 
 
@@ -447,40 +459,36 @@ quick_string_builder :: () #expand
 
 
 
-get_type_name :: (info : *Type_Info) -> string
+find_variant_contained_type :: ($variant_type : Type) -> Type
 {
-    builder : String_Builder;
-    free_buffers(*builder);
-    get_type_name_internal :: (builder : *String_Builder, info : *Type_Info)
+    info := type_info(variant_type);
+    assert(info.type == .VARIANT);
+    variant_info := cast(*Type_Info_Variant)info;
+    return get_type(variant_info.variant_of);
+}
+
+
+
+same_polymorph_source :: (info_a : *Type_Info, info_b : *Type_Info) -> bool
+{
+    find_top_polymorph_source :: (info : *Type_Info) -> *Type_Info
     {
-        if info.type == .PROCEDURE
+        while true
         {
-            info_proc := cast(*Type_Info_Procedure)(info);
-            append(builder, "(");
-            for info_proc.argument_types 
+            if info.type == .STRUCT
             {
-                if it_index != 0 then append(builder, ", ");
-                get_type_name_internal(builder, it);
-            }
-            append(builder, ")");
-            if info_proc.return_types
-            {
-                append(builder, " -> (");
-                for info_proc.return_types
+                struct_info := cast(*Type_Info_Struct)info;
+                if struct_info.polymorph_source_struct
                 {
-                    if it_index != 0 then append(builder, ", ");
-                    get_type_name_internal(builder, it);
+                    info = struct_info.polymorph_source_struct;
+                    continue;
                 }
-                append(builder, ")");
             }
+            break;
         }
-        else
-        {
-            print_type_to_builder(builder, info);
-        }
+        return info;
     }
-    get_type_name_internal(*builder, info);
-    return builder_to_string(*builder, allocator = temporary_allocator);
+    return find_top_polymorph_source(info_a) == find_top_polymorph_source(info_b);
 }
 
 
