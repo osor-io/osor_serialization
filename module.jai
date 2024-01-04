@@ -7,7 +7,7 @@
 
 
 
-serialize :: (input : *$T, allocator : Allocator = context.allocator) -> []u8 #must
+serialize :: (input : *$T) -> []u8 #must
 {
     ALIGNED_INPUT_SIZE :: #run align_for_serialization(size_of(T));
 
@@ -15,7 +15,7 @@ serialize :: (input : *$T, allocator : Allocator = context.allocator) -> []u8 #m
 
     buffer : []u8;
     buffer.count = ALIGNED_INPUT_SIZE + dynamic_memory_required;
-    buffer.data  = alloc(buffer.count, allocator);
+    buffer.data  = alloc(buffer.count);
     memset(buffer.data, 0, buffer.count);
 
     dynamic_memory : []u8;
@@ -444,7 +444,7 @@ align_for_serialization :: (value : $T) -> T
 quick_string_builder :: () #expand
 {
     `_builder : String_Builder;
-    _builder.allocator = __temporary_allocator;
+    _builder.allocator = temporary_allocator;
     `defer reset(*_builder);
     `b := *_builder;
     `p :: (format_string : string, args: ..Any) #expand
