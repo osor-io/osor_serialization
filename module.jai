@@ -265,9 +265,11 @@ handle_dynamic_memory :: (element : *$T,
 
 
 
-            case .TYPE;         #through;
-            case .CODE;         #through;
-            case .OVERLOAD_SET; #through;
+            case .TYPE;            #through;
+            case .CODE;            #through;
+            case .UNTYPED_ENUM;    #through;
+            case .UNTYPED_LITERAL; #through;
+            case .OVERLOAD_SET;    #through;
             case .ANY;
             compiler_report(tprint("Type % cannot be serialized cause it's a %", T, info.type));
         }
