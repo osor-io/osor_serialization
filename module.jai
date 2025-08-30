@@ -7,7 +7,7 @@
 
 
 
-serialize :: (input : *$T) -> []u8 #must
+serialize :: (input : *$T) -> []u8
 {
     ALIGNED_INPUT_SIZE :: #run align_for_serialization(size_of(T));
 
@@ -16,6 +16,7 @@ serialize :: (input : *$T) -> []u8 #must
     buffer : []u8;
     buffer.count = ALIGNED_INPUT_SIZE + dynamic_memory_required;
     buffer.data  = alloc(buffer.count);
+    assert(buffer.data == align_for_serialization(buffer.data));
     memset(buffer.data, 0, buffer.count);
 
     dynamic_memory : []u8;
@@ -64,7 +65,7 @@ deserialize :: (bytes : []u8, $Output_Type : Type) -> *Output_Type
 handle_dynamic_memory :: (element : *$T,
                           dynamic_memory_pointer : *u8,
                           $mode : enum { COUNT; COPY_AND_ENCODE; },
-                          $allow_pointer := false) -> next_dynamic_memory_pointer : *u8 #must
+                          $allow_pointer := false) -> next_dynamic_memory_pointer : *u8
 {
     #insert #run () -> string
     {
@@ -436,9 +437,34 @@ needs_serialization_replacement :: (struct_info : *Type_Info_Struct) -> bool
 
 
 
+//
+// @@NOTE: We'd like to handle the alignment of the serialized elements
+// explicitly, so if we're gonna copy an instance of some type into
+// dynamic memory, we'd first align the address via something like
+// an `alignment_of(T)`. However there's no way to do this currently.
+//
+// Also, when we allocate a buffer we also would have to align the allocation
+// and give the user back the unaligned addresse to free it, similar to how
+// `NewArray` works at the time of writing, which kind of sucks as an interface. 
+// Otherwise if we just alloc and don't align we'd be further aligning as we
+// encode the dynamic memory and leave things out of whack.
+//
+// So for now, since most defaults allocators align to 8 bytes, we're also gonna
+// align to 8 bytes here. All basic data types and pointers would just work. It'd
+// fail for SIMD registers that require larger alignments, but oh well, we don't have
+// real control of this here, unless we just aligned everything to 512 bits / 64 bytes 
+// to account for 512-wide SIMD ops (I believe the largest reasonable used one at the
+// time of writing). But that would also be a waste of space in the types that don't
+// require alignment.
+//
+// TLDR: We'd love an `alignment_of(T)` or an alignment field in `Type_Info` as well
+// as a way to `alloc(bytes, alignment)`.
+//
+//                                           - Ruben Osorio, 30/08/2025
+//
 align_for_serialization :: (value : $T) -> T
 {
-    return (value + 15) & (~15);
+    return (value + 7) & (~7);
 }
 
 
